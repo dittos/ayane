@@ -28,6 +28,7 @@ def cli(ctx):
             ))
         selected = click.prompt('Multiple storages found. Please choose one', type=int)
         device = devices[selected]
+        click.echo()
 
     device.open()
     ctx.obj = {
@@ -46,7 +47,7 @@ def ls(ctx, path):
         name = obj.name
         if obj.is_folder:
             name += '/'
-        click.echo(u'{}\t{}'.format(obj.id, name))
+        click.echo(name)
 
 
 @cli.command()
