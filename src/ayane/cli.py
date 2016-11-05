@@ -9,43 +9,52 @@ def main():
 
 
 @click.group()
-def cli():
-    pass
-
-
-@cli.command()
-@click.argument('path', default='')
-def ls(path):
+@click.pass_context
+def cli(ctx):
     wpd = Wpd()
-    if not path:
-        devices = wpd.get_devices()
-        for device in devices:
-            click.echo('{0: <30} {1} {2}'.format(
+    devices = wpd.get_devices()
+    if not devices:
+        click.echo('No available storage found.')
+        ctx.abort()
+    if len(devices) == 1:
+        device = devices[0]
+    else:
+        for i, device in enumerate(devices):
+            click.echo('[{0}] {1: <30} {2} {3}'.format(
+                i,
                 device.get_friendly_name(),
                 device.get_manufacturer(),
                 device.get_description(),
             ))
-    else:
-        devices = wpd.get_devices()
-        device, parent = resolve_path(devices, path)
-        if not device:
-            return
+        selected = click.prompt('Multiple storages found. Please choose one', type=int)
+        device = devices[selected]
 
-        for obj in device.iter_objects(parent=parent):
-            name = obj.name
-            if obj.is_folder:
-                name += '/'
-            click.echo(u'{}\t{}'.format(obj.id, name))
+    device.open()
+    ctx.obj = {
+        'device': device,
+    }
+
+
+@cli.command()
+@click.argument('path', default='')
+@click.pass_context
+def ls(ctx, path):
+    device = ctx.obj['device']
+    parent = resolve_path(device, path)
+
+    for obj in device.iter_objects(parent=parent):
+        name = obj.name
+        if obj.is_folder:
+            name += '/'
+        click.echo(u'{}\t{}'.format(obj.id, name))
 
 
 @cli.command()
 @click.argument('path')
-def stats(path):
-    wpd = Wpd()
-    devices = wpd.get_devices()
-    device, parent = resolve_path(devices, path)
-    if not device:
-        return
+@click.pass_context
+def stats(ctx, path):
+    device = ctx.obj['device']
+    parent = resolve_path(device, path)
 
     size_by_ext = collections.defaultdict(lambda: 0)
     queue = [parent]
@@ -66,21 +75,9 @@ def stats(path):
         click.echo(u'{}\t{}'.format(ext, filesizeformat(size)))
 
 
-def resolve_path(devices, path):
+def resolve_path(device, path):
     # TODO: escape, ...
     parts = path.split('/')
-
-    device_name = parts.pop(0)
-    for d in devices:
-        if d.get_friendly_name() == device_name:
-            device = d
-            break
-
-    if device is None:
-        return None, None
-
-    device.open()
-
     parent = None
     for part in parts:
         next_parent = None
@@ -89,10 +86,10 @@ def resolve_path(devices, path):
                 next_parent = obj
                 break
         if next_parent is None:
-            return None, None
+            return None
         parent = next_parent
 
-    return device, parent
+    return parent
 
 
 def filesizeformat(bytes_):
