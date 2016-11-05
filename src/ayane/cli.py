@@ -52,44 +52,112 @@ def ls(ctx, path):
 @cli.command()
 @click.argument('path')
 @click.pass_context
+def rm(ctx, path):
+    device = ctx.obj['device']
+    obj = resolve_path(device, path)
+    device.delete_objects([obj])
+
+
+@cli.command()
+@click.argument('path')
+@click.pass_context
 def stats(ctx, path):
     device = ctx.obj['device']
     parent = resolve_path(device, path)
 
+    total_size = 0
     size_by_ext = collections.defaultdict(lambda: 0)
-    queue = [parent]
-    while queue:
-        p = queue.pop()
-        w, h = click.get_terminal_size()
-        click.echo(u'\r@ ' + p.name[:w // 2], nl=False)
-        for obj in device.iter_objects(parent=p):
-            if obj.is_folder:
-                queue.append(obj)
-            else:
-                _, ext = os.path.splitext(obj.name)
-                ext = ext.lower()
-                size_by_ext[ext] += obj.size
+    for path, folders, objs in walk(device, parent):
+        echo_clear_line(u'@ ' + path)
+        for obj in objs:
+            _, ext = os.path.splitext(obj.name)
+            ext = ext.lower()
+            total_size += obj.size
+            size_by_ext[ext] += obj.size
+    echo_clear_line()
 
-    click.echo('\r')
     for ext, size in sorted(size_by_ext.items(), key=lambda (ext, size): size, reverse=True):
         click.echo(u'{}\t{}'.format(ext, filesizeformat(size)))
+    click.echo(u'Total\t{}'.format(filesizeformat(total_size)))
+
+
+@cli.command()
+@click.argument('path')
+@click.option('--delete-ext', '-d', multiple=True)
+@click.pass_context
+def trim(ctx, path, delete_ext):
+    device = ctx.obj['device']
+    parent = resolve_path(device, path)
+    delete_ext_set = set()
+    for ext in delete_ext:
+        ext = ext.lower()
+        if ext[0] != '.':
+            ext = '.' + ext
+        delete_ext_set.add(ext)
+
+    objs_to_delete = []
+    total_size = 0
+    size_by_ext = collections.defaultdict(lambda: 0)
+    for path, folders, objs in walk(device, parent):
+        echo_clear_line(u'@ ' + path)
+        for obj in objs:
+            _, ext = os.path.splitext(obj.name)
+            ext = ext.lower()
+            if ext in delete_ext_set:
+                objs_to_delete.append(obj)
+                total_size += obj.size
+                size_by_ext[ext] += obj.size
+    echo_clear_line()
+
+    for ext, size in sorted(size_by_ext.items(), key=lambda (ext, size): size, reverse=True):
+        click.echo(u'{}\t{}'.format(ext, filesizeformat(size)))
+    click.echo(u'Total\t{}'.format(filesizeformat(total_size)))
+
+    click.confirm('Found {} objects to delete. Continue?'.format(len(objs_to_delete)), abort=True)
+    with click.progressbar(objs_to_delete) as objs:
+        for obj in objs:
+            device.delete_objects([obj])
+
+
+def echo_clear_line(line=''):
+    w, h = click.get_terminal_size()
+    click.echo('\r' + ' ' * w, nl=False)
+    if line:
+        click.echo(u'\r' + line[:w // 2], nl=False)
+    else:
+        click.echo()
 
 
 def resolve_path(device, path):
     # TODO: escape, ...
-    parts = path.split('/')
-    parent = None
+    parts = path.rstrip('/').split('/')
+    current = None
     for part in parts:
-        next_parent = None
-        for obj in device.iter_objects(parent=parent):
+        found = None
+        for obj in device.iter_objects(parent=current):
             if obj.name == part:
-                next_parent = obj
+                found = obj
                 break
-        if next_parent is None:
+        if found is None:
             return None
-        parent = next_parent
+        current = found
 
-    return parent
+    return current
+
+
+def walk(device, parent):
+    queue = [(parent, parent.name)]
+    while queue:
+        folder, path = queue.pop()
+        folders = []
+        objs = []
+        for obj in device.iter_objects(parent=folder):
+            if obj.is_folder:
+                folders.append(obj)
+            else:
+                objs.append(obj)
+        yield path, folders, objs
+        queue.extend((f, path + u'/' + f.name) for f in folders)
 
 
 def filesizeformat(bytes_):

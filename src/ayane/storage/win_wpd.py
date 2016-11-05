@@ -18,9 +18,10 @@ port.IEnumPortableDeviceObjectIDs._methods_ = methods
 
 
 def define_property_key(fmtid, pid):
-    struct = port._tagpropertykey()
-    struct.fmtid = comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}")
-    struct.pid = pid
+    struct = port._tagpropertykey(
+        fmtid=comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}"),
+        pid=pid
+    )
     return comtypes.pointer(struct)
 
 WPD_OBJECT_PARENT_ID = define_property_key(comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}"), 3)
@@ -113,6 +114,18 @@ class Device(object):
                 except _ctypes.COMError:
                     size = None
                 yield Object(object_id, name, is_folder, size)
+
+    def delete_objects(self, objects, recursive=False):
+        # https://msdn.microsoft.com/en-us/library/windows/desktop/dd388536(v=vs.85).aspx
+        VT_LPWSTR = 31
+        ids = _create_object(types.PortableDevicePropVariantCollection)
+        for obj in objects:
+            v = types.tag_inner_PROPVARIANT(vt=VT_LPWSTR)
+            # XXX: is this field name consistent in all systems?
+            # Use getattr because prefix __ is handled specially
+            getattr(v, '__MIDL____MIDL_itf_PortableDeviceTypes_0003_00170001').pwszVal = obj.id
+            ids.Add(v)
+        self._content.Delete(1 if recursive else 0, ids)
 
     def _get_info_string(self, func):
         length_p = ctypes.pointer(ctypes.c_ulong(0))
