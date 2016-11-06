@@ -46,10 +46,10 @@ Podcasts/
 Total   10.7 GB
 ```
 
-### Remove files with specified extension
+### Remove files not matching whitelisted extension / max. duration
 
 ```
-> ayane trim Phone/Music -d ape -d bmp
+> ayane trim Phone/Music -k mp3 -k flac -k m4a -k ogg -k wav -m 600000
 .ape    297.4 MB
 .bmp    101.9 MB
 Total   399.4 MB
