@@ -85,8 +85,9 @@ def stats(ctx, path):
 @cli.command()
 @click.argument('path')
 @click.option('--delete-ext', '-d', multiple=True)
+@click.option('--max-duration', '-m', type=int, default=0xfffffffffffffffffL)
 @click.pass_context
-def trim(ctx, path, delete_ext):
+def trim(ctx, path, delete_ext, max_duration):
     device = ctx.obj['device']
     parent = resolve_path(device, path)
     delete_ext_set = set()
@@ -104,7 +105,7 @@ def trim(ctx, path, delete_ext):
         for obj in objs:
             _, ext = os.path.splitext(obj.name)
             ext = ext.lower()
-            if ext in delete_ext_set:
+            if ext in delete_ext_set or obj.duration > max_duration:
                 objs_to_delete.append(obj)
                 total_size += obj.size
                 size_by_ext[ext] += obj.size

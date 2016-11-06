@@ -19,7 +19,7 @@ port.IEnumPortableDeviceObjectIDs._methods_ = methods
 
 def define_property_key(fmtid, pid):
     struct = port._tagpropertykey(
-        fmtid=comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}"),
+        fmtid=fmtid,
         pid=pid
     )
     return comtypes.pointer(struct)
@@ -29,6 +29,8 @@ WPD_OBJECT_NAME = define_property_key(comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA
 WPD_OBJECT_CONTENT_TYPE = define_property_key(comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}"), 7)
 WPD_OBJECT_SIZE = define_property_key(comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}"), 11)
 WPD_OBJECT_ORIGINAL_FILE_NAME = define_property_key(comtypes.GUID("{EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C}"), 12)
+
+WPD_MEDIA_DURATION = define_property_key(comtypes.GUID("{2ED8BA05-0AD3-42DC-B0D0-BC95AC396AC8}"), 19)
 
 WPD_CONTENT_TYPE_FOLDER = comtypes.GUID("{27E2E392-A111-48E0-AB0C-E17705A05F85}")
 
@@ -91,7 +93,9 @@ class Device(object):
         property_keys.Add(WPD_OBJECT_NAME)
         property_keys.Add(WPD_OBJECT_ORIGINAL_FILE_NAME)
         property_keys.Add(WPD_OBJECT_CONTENT_TYPE)
+        # TODO: get additional properties as parameter
         property_keys.Add(WPD_OBJECT_SIZE)
+        property_keys.Add(WPD_MEDIA_DURATION)
 
         while True:
             enum_object_ids.Next(
@@ -109,11 +113,16 @@ class Device(object):
                 except _ctypes.COMError:
                     name = property_values.GetStringValue(WPD_OBJECT_NAME)
                 is_folder = property_values.GetGuidValue(WPD_OBJECT_CONTENT_TYPE) == WPD_CONTENT_TYPE_FOLDER
+                # TODO: check content type instead of catching exceptions
                 try:
                     size = property_values.GetUnsignedLargeIntegerValue(WPD_OBJECT_SIZE)
                 except _ctypes.COMError:
                     size = None
-                yield Object(object_id, name, is_folder, size)
+                try:
+                    duration = property_values.GetUnsignedLargeIntegerValue(WPD_MEDIA_DURATION)
+                except _ctypes.COMError:
+                    duration = None
+                yield Object(object_id, name, is_folder, size, duration)
 
     def delete_objects(self, objects, recursive=False):
         # https://msdn.microsoft.com/en-us/library/windows/desktop/dd388536(v=vs.85).aspx
@@ -139,11 +148,20 @@ class Device(object):
 
 
 class Object(object):
-    def __init__(self, id, name, is_folder, size):
+    __slots__ = [
+        'id',
+        'name',
+        'is_folder',
+        'size',
+        'duration',
+    ]
+
+    def __init__(self, id, name, is_folder, size, duration):
         self.id = id
         self.name = name
         self.is_folder = is_folder
         self.size = size
+        self.duration = duration
 
     def __repr__(self):
         return (
